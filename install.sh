@@ -1,5 +1,4 @@
 #!/bin/bash
-# v2025-12-05 by ChatGPT - Custom 3x-ui Installer
 set -e
 
 echo ">>> [1/5] Switching to /usr/local ..."
