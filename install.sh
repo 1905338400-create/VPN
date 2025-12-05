@@ -1,17 +1,21 @@
 #!/bin/bash
 set -e
 
-# 1. 切到安装目录
+echo ">>> 切换到 /usr/local"
 cd /usr/local
 
-# 2. 从你自己的 GitHub 仓库下载打包好的 3x-ui
-curl -L -o 3x-ui-2.8.5.tar.gz "https://github.com/1905338400-create/VPN/raw/refs/heads/main/3x-ui-2.8.5.tar.gz"
+echo ">>> 下载 3x-ui-2.8.5.tar.gz..."
+curl -L -o 3x-ui-2.8.5.tar.gz "https://raw.githubusercontent.com/1905338400-create/VPN/main/3x-ui-2.8.5.tar.gz"
 
-# 3. 解压到 /usr/local/3x-ui-2.8.5
+echo ">>> 删除旧版本目录"
 rm -rf 3x-ui-2.8.5
+
+echo ">>> 解压文件..."
 tar -zxf 3x-ui-2.8.5.tar.gz
 
-# 4. 进入目录，执行官方自带的安装脚本
+echo ">>> 进入目录并执行官方 install.sh..."
 cd 3x-ui-2.8.5
 chmod +x install.sh
 ./install.sh
+
+echo ">>> 安装完成！"
