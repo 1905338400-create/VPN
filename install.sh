@@ -1,21 +1,22 @@
 #!/bin/bash
+# v2025-12-05 by ChatGPT - Custom 3x-ui Installer
 set -e
 
-echo ">>> 切换到 /usr/local"
+echo ">>> [1/5] Switching to /usr/local ..."
 cd /usr/local
 
-echo ">>> 下载 3x-ui-2.8.5.tar.gz..."
+echo ">>> [2/5] Downloading 3x-ui-2.8.5.tar.gz from GitHub ..."
 curl -L -o 3x-ui-2.8.5.tar.gz "https://raw.githubusercontent.com/1905338400-create/VPN/main/3x-ui-2.8.5.tar.gz"
 
-echo ">>> 删除旧版本目录"
+echo ">>> [3/5] Removing old directory (if exists) ..."
 rm -rf 3x-ui-2.8.5
 
-echo ">>> 解压文件..."
+echo ">>> [4/5] Unpacking archive ..."
 tar -zxf 3x-ui-2.8.5.tar.gz
 
-echo ">>> 进入目录并执行官方 install.sh..."
+echo ">>> [5/5] Running original install.sh ..."
 cd 3x-ui-2.8.5
 chmod +x install.sh
 ./install.sh
 
-echo ">>> 安装完成！"
+echo ">>> Installation complete."
