@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>小李的减重计划</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            /* 核心色板 - 高饱和度 */
+            --primary: #0066CC;   /* 深蓝 */
+            --primary-light: #E6F0FF;
+            --success: #2E8B57;   /* 深绿 */
+            --warning: #FF8C00;   /* 深橙 */
+            --danger: #DC143C;    /* 深红 */
+            --gold: #FFD700;      /* 爆表金 */
+            --gold-glow: rgba(255, 215, 0, 0.4);
+            
+            --bg: #F5F7FA;
+            --card-bg: #FFFFFF;
+            --text-main: #1A1A1A; /* 近纯黑 */
+            --text-sub: #666666;
+            
+            --radius: 20px;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: -apple-system, "SF Pro Rounded", "Helvetica Neue", Arial, sans-serif; }
+        body { background-color: var(--bg); color: var(--text-main); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* ====== 布局 ====== */
+        .page-container { flex: 1; position: relative; overflow: hidden; }
+        .page { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            padding: calc(var(--safe-top) + 10px) 16px calc(var(--safe-bottom) + 90px) 16px;
+            overflow-y: auto; opacity: 0; visibility: hidden; 
+            transition: opacity 0.25s ease;
+            -webkit-overflow-scrolling: touch;
+        }
+        .page.active { opacity: 1; visibility: visible; z-index: 10; }
+
+        /* ====== 头部与智能问候 ====== */
+        .header-section { margin-bottom: 20px; padding-top: 10px; }
+        .greeting-sub { font-size: 13px; color: var(--text-sub); font-weight: 500; margin-bottom: 2px; }
+        .app-title { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; color: var(--text-main); }
+        
+        .status-banner {
+            margin-top: 12px;
+            background: linear-gradient(135deg, #0066CC 0%, #004C99 100%);
+            color: white; padding: 16px; border-radius: 18px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 8px 16px rgba(0, 102, 204, 0.25);
+        }
+        .status-info h4 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+        .status-info p { font-size: 13px; opacity: 0.9; font-weight: 500; }
+        .status-icon { font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)); }
+
+        /* ====== 卡片通用 ====== */
+        .card { 
+            background: var(--card-bg); border-radius: var(--radius); padding: 20px; 
+            margin-bottom: 18px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
+            border: 1px solid rgba(0,0,0,0.04); 
+        }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .card-title { font-size: 18px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
+        .card-subtitle { font-size: 12px; color: var(--text-sub); background: #F0F2F5; padding: 4px 10px; border-radius: 10px; font-weight: 600; }
+
+        /* ====== 首页：体重 ====== */
+        .weight-display { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+        .weight-val { font-size: 48px; font-weight: 800; letter-spacing: -1.5px; color: var(--text-main); line-height: 1; }
+        .weight-unit { font-size: 18px; color: var(--text-sub); margin-left: 4px; font-weight: 600; }
+        .rec-btn { background: var(--text-main); color: white; border: none; padding: 10px 20px; border-radius: 24px; font-size: 14px; font-weight: 600; box-shadow: 0 4px 10px rgba(0,0,0,0.15); transition: transform 0.1s; }
+        .rec-btn:active { transform: scale(0.95); }
+
+        .progress-track { height: 12px; background: #EAEAEA; border-radius: 6px; overflow: hidden; margin-top: 10px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #2E8B57, #3CB371); width: 0%; border-radius: 6px; transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        .range-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-sub); margin-top: 6px; font-weight: 500; }
+
+        /* ====== 首页：圆环 (重构) ====== */
+        .rings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .ring-card { 
+            display: flex; flex-direction: column; align-items: center; padding: 20px 10px; text-align: center; 
+            transition: all 0.3s ease; position: relative; overflow: hidden;
+        }
+        
+        /* 爆表特效样式 */
+        .ring-card.overload {
+            background: linear-gradient(135deg, #FFFDF5 0%, #FFF 100%);
+            border: 1px solid var(--gold);
+            box-shadow: 0 0 20px var(--gold-glow);
+        }
+        .ring-card.overload::after {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, var(--gold-glow) 0%, transparent 60%);
+            animation: pulse 2s infinite; pointer-events: none;
+        }
+        @keyframes pulse { 0% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 0.6; transform: scale(1); } 100% { opacity: 0.3; transform: scale(0.8); } }
+
+        .ring-box { position: relative; width: 110px; height: 110px; margin-bottom: 10px; z-index: 2; }
+        .ring-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
+        .ring-pct { font-size: 26px; font-weight: 800; line-height: 1; color: var(--text-main); }
+        .ring-lbl { font-size: 11px; color: var(--text-sub); margin-top: 2px; font-weight: 600; }
+
+        svg.ring { transform: rotate(-90deg); width: 100%; height: 100%; }
+        circle { fill: none; stroke-width: 10; stroke-linecap: round; }
+        .c-bg { stroke: #F0F0F0; }
+        .c-val { stroke-dasharray: 283; stroke-dashoffset: 283; transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .ring-card.overload .c-val { stroke: var(--gold); filter: drop-shadow(0 0 4px var(--gold)); }
+        .ring-card.overload .ring-pct { color: #B8860B; }
+
+        .data-main { font-size: 18px; font-weight: 700; color: var(--text-main); z-index: 2; }
+        .data-sub { font-size: 11px; color: var(--text-sub); margin-top: 2px; z-index: 2; }
+
+        /* ====== 图表 (高对比度) ====== */
+        .chart-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; }
+        .chart-content { height: 240px; min-width: 600px; /* 强制横向滚动 */ position: relative; }
+
+        /* ====== 日期选择器 (8天制 + 放大今天) ====== */
+        .date-scroller { 
+            display: flex; gap: 12px; overflow-x: auto; 
+            padding: 10px 10px 20px 10px; margin: -10px -10px 10px -10px; /* 增加点击区域 */
+            -webkit-overflow-scrolling: touch; 
+        }
+        .date-item { 
+            flex: 0 0 72px; background: #fff; border-radius: 16px; padding: 14px 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: 2px solid transparent; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03); position: relative;
+        }
+        
+        /* 状态边框 */
+        .date-item.st-done { border-color: var(--success); }
+        .date-item.st-fail { border-color: var(--warning); }
+        
+        /* 今天的高亮样式 */
+        .date-item.is-today { 
+            flex: 0 0 84px; /* 更宽 */
+            background: #FAFBFF; 
+            border-color: var(--primary);
+            box-shadow: 0 8px 16px rgba(0, 102, 204, 0.15);
+            z-index: 2;
+        }
+        /* 选中态 */
+        .date-item.active { background: var(--text-main); border-color: var(--text-main); transform: translateY(-4px); }
+        .date-item.active * { color: white !important; }
+        
+        .d-week { font-size: 14px; font-weight: 700; margin-bottom: 4px; color: var(--text-main); }
+        .d-date { font-size: 11px; color: var(--text-sub); font-weight: 500; }
+        .date-item.is-today .d-week { font-size: 16px; color: var(--primary); }
+        .date-item.is-today .d-date { color: var(--primary); opacity: 0.8; }
+
+        /* ====== 任务列表 (打勾) ====== */
+        .task-row { 
+            display: flex; align-items: center; padding: 16px 0; border-bottom: 1px solid #F5F5F5; 
+            cursor: pointer; transition: background 0.2s; 
+        }
+        .chk-box { 
+            width: 28px; height: 28px; border-radius: 8px; border: 2px solid #D1D1D1; margin-right: 14px; 
+            display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; font-weight: 800; 
+            transition: all 0.2s; flex-shrink: 0;
+        }
+        .task-row.done .chk-box { background: var(--success); border-color: var(--success); }
+        .task-row.done .t-info { opacity: 0.4; text-decoration: line-through; }
+        .t-title { font-size: 16px; font-weight: 700; color: var(--text-main); }
+        .t-desc { font-size: 12px; color: var(--text-sub); margin-top: 3px; }
+
+        /* ====== 食谱卡片 (详细分量) ====== */
+        .menu-row { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #F5F5F5; }
+        .menu-row:last-child { border-bottom: none; }
+        .m-tag { font-size: 12px; font-weight: 700; color: var(--primary); background: var(--primary-light); padding: 2px 8px; border-radius: 6px; margin-bottom: 6px; display: inline-block; }
+        .m-name { font-size: 15px; color: var(--text-main); font-weight: 600; line-height: 1.5; }
+        .m-portion { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+        .eat-btn { 
+            background: #F5F7FA; color: var(--primary); border: none; padding: 8px 16px; border-radius: 12px; 
+            font-size: 13px; font-weight: 700; transition: all 0.2s; white-space: nowrap; margin-left: 10px;
+        }
+        .eat-btn.eaten { background: var(--success); color: white; cursor: default; }
+
+        /* ====== 分类补录 (手风琴) ====== */
+        .category-group { margin-top: 15px; }
+        .cat-header { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 14px 12px; background: #F9FAFB; border-radius: 14px; margin-bottom: 8px;
+            font-weight: 700; cursor: pointer; color: var(--text-main);
+        }
+        .cat-body { display: none; padding: 5px 0 15px 0; grid-template-columns: 1fr 1fr; gap: 10px; animation: slideDown 0.3s; }
+        .cat-body.show { display: grid; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .add-btn { 
+            background: #fff; border: 1px solid #EEE; padding: 12px; border-radius: 12px; text-align: left;
+            display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+        .add-btn:active { background: #F0F0F0; transform: scale(0.98); }
+        .ab-name { font-size: 14px; font-weight: 600; }
+        .ab-val { font-size: 11px; color: var(--text-sub); }
+
+        /* ====== 底部导航 ====== */
+        .tab-bar { 
+            position: fixed; bottom: 0; left: 0; width: 100%; height: calc(60px + var(--safe-bottom)); 
+            background: rgba(255,255,255,0.98); backdrop-filter: blur(20px); border-top: 1px solid rgba(0,0,0,0.08); 
+            display: flex; padding-bottom: var(--safe-bottom); z-index: 100;
+        }
+        .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #BBB; transition: color 0.2s; }
+        .tab-item.active { color: var(--primary); }
+        .tab-icon { font-size: 26px; margin-bottom: 2px; }
+        .tab-txt { font-size: 10px; font-weight: 600; }
+
+        /* ====== Toast 撤销弹窗 ====== */
+        .toast-box { 
+            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px); 
+            background: rgba(30,30,30,0.95); color: white; padding: 12px 20px; border-radius: 30px; 
+            display: flex; align-items: center; gap: 15px; z-index: 300; opacity: 0; pointer-events: none; transition: all 0.3s;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .toast-box.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+        .undo-btn { color: #FFD700; font-weight: 700; font-size: 14px; background: none; border: none; cursor: pointer; }
+
+        /* ====== 弹窗 ====== */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: center; justify-content: center; }
+        .modal-content { background: #fff; width: 80%; max-width: 320px; border-radius: 24px; padding: 24px; text-align: center; }
+        .inp-big { width: 100%; padding: 15px; font-size: 24px; text-align: center; border: 2px solid #EAEAEA; border-radius: 16px; margin: 15px 0; font-weight: 700; color: var(--primary); }
+
+    </style>
+</head>
+<body>
+
+    <div class="page-container">
+        
+        <div id="home" class="page active">
+            <div class="header-section">
+                <div class="greeting-sub" id="greetingText">早安，小李教练</div>
+                <div class="app-title">减重控制中心</div>
+                
+                <div class="status-banner" id="statusBanner">
+                    <div class="status-info">
+                        <h4 id="themeTitle">冲刺阶段</h4>
+                        <p id="themeDesc">今日任务：有氧耐力 + 低碳高蛋白</p>
+                    </div>
+                    <div class="status-icon">🔥</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">📉 体重管理</span>
+                    <span class="card-subtitle">目标 75.0kg</span>
+                </div>
+                <div class="weight-display">
+                    <div><span class="weight-val" id="dispWeight">--</span><span class="weight-unit">kg</span></div>
+                    <button class="rec-btn" onclick="openModal('weight')">🖊 记录体重</button>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="weightBar"></div>
+                </div>
+                <div class="range-labels">
+                    <span>初始: 85kg</span><span>进度: -<span id="lostVal">0</span>kg</span><span>目标: 75kg</span>
+                </div>
+
+                <div style="margin-top:20px; padding-top:15px; border-top:1px solid #F0F2F5;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-weight:700; color:var(--text-main);">💧 饮水</span>
+                        <span style="font-size:12px; color:var(--text-sub);"><span id="waterVal" style="color:#0066CC;font-weight:700;font-size:16px;">0</span> / 2300ml</span>
+                    </div>
+                    <div class="progress-track" style="height:8px; margin-top:0;">
+                        <div class="progress-fill" id="waterBar" style="background:#4da6ff;"></div>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button class="eat-btn" onclick="addWater(100)">+100</button>
+                        <button class="eat-btn" onclick="addWater(250)">+250</button>
+                        <button class="eat-btn" onclick="addWater(500)">+500</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rings-row">
+                <div class="card ring-card" id="burnCard">
+                    <div class="ring-box">
+                        <svg class="ring" viewBox="0 0 100 100">
+                            <circle class="c-bg" cx="50" cy="50" r="45"></circle>
+                            <circle class="c-val" id="ringBurn" cx="50" cy="50" r="45" stroke="#FF8C00"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <span class="ring-pct" id="txtBurnPct">0%</span>
+                            <span class="ring-lbl">完成度</span>
+                        </div>
+                    </div>
+                    <div class="data-main" id="txtBurnVal">0</div>
+                    <div class="data-sub">今日消耗 (基础+运动)</div>
+                </div>
+
+                <div class="card ring-card">
+                    <div class="ring-box">
+                        <svg class="ring" viewBox="0 0 100 100">
+                            <circle class="c-bg" cx="50" cy="50" r="45"></circle>
+                            <circle class="c-val" id="ringEat" cx="50" cy="50" r="45" stroke="#2E8B57"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <span class="ring-pct" id="txtEatPct">0%</span>
+                            <span class="ring-lbl">已摄入</span>
+                        </div>
+                    </div>
+                    <div class="data-main" id="txtEatLeft" style="color:#2E8B57">1900</div>
+                    <div class="data-sub">剩余额度 (kcal)</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">⚖️ 体重曲线</span><span class="card-subtitle">70-90kg</span></div>
+                <div class="chart-wrapper"><div class="chart-content"><canvas id="cWeight"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">🔥 消耗趋势</span><span class="card-subtitle">基准: 1800</span></div>
+                <div class="chart-wrapper"><div class="chart-content"><canvas id="cBurn"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">🍽️ 摄入监控</span><span class="card-subtitle">限额: 1900</span></div>
+                <div class="chart-wrapper"><div class="chart-content"><canvas id="cIntake"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">📉 热量缺口</span><span class="card-subtitle">目标 > 500</span></div>
+                <div class="chart-wrapper"><div class="chart-content"><canvas id="cDeficit"></canvas></div></div>
+            </div>
+        </div>
+
+        <div id="train" class="page">
+            <div class="header-section"><div class="app-title">训练计划 🏋️‍♂️</div></div>
+            
+            <div class="date-scroller" id="trainScroller"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title" id="trainTitle">今日必做</span>
+                    <span class="card-subtitle" id="trainTarget">目标: 0</span>
+                </div>
+                <div id="trainList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">➕ 额外加练 (补录)</span></div>
+                
+                <div class="category-group">
+                    <div class="cat-header" onclick="toggleCat(this)">🏃‍♂️ 有氧训练 <span style="color:#CCC">▼</span></div>
+                    <div class="cat-body">
+                        <div class="add-btn" onclick="addLog('extra', '跑步10min', 80)">
+                            <span class="ab-name">跑步 10分钟</span><span class="ab-val">80 kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('extra', '跑步30min', 250)">
+                            <span class="ab-name">跑步 30分钟</span><span class="ab-val">250 kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('extra', '跳绳10min', 100)">
+                            <span class="ab-name">跳绳 10分钟</span><span class="ab-val">100 kcal</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="category-group">
+                    <div class="cat-header" onclick="toggleCat(this)">💪 无氧 / 马房 <span style="color:#CCC">▼</span></div>
+                    <div class="cat-body">
+                        <div class="add-btn" onclick="addLog('extra', '哑铃1组', 100)">
+                            <span class="ab-name">哑铃循环 1组</span><span class="ab-val">100 kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('extra', '马房工作1h', 200)">
+                            <span class="ab-name">马房重工 1小时</span><span class="ab-val">200 kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('extra', '核心训练', 80)">
+                            <span class="ab-name">核心/腹肌 10min</span><span class="ab-val">80 kcal</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="extraLogList" style="padding-top:15px; border-top:1px solid #f0f0f0; font-size:12px; color:#666;"></div>
+            </div>
+        </div>
+
+        <div id="diet" class="page">
+            <div class="header-section"><div class="app-title">饮食缺口 🥗</div></div>
+
+            <div class="date-scroller" id="dietScroller"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">📋 推荐食谱</span>
+                    <span class="card-subtitle">一键打卡</span>
+                </div>
+                <div id="menuList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">🖊 手动补录</span></div>
+
+                <div class="category-group">
+                    <div class="cat-header" onclick="toggleCat(this)">🍚 主食 (碳水) <span style="color:#CCC">▼</span></div>
+                    <div class="cat-body">
+                        <div class="add-btn" onclick="addLog('food', '米饭1拳', 150)">
+                            <span class="ab-name">米饭 1拳</span><span class="ab-val">150g / 150kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('food', '玉米1根', 120)">
+                            <span class="ab-name">玉米 1根</span><span class="ab-val">200g / 120kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('food', '燕麦1碗', 140)">
+                            <span class="ab-name">燕麦 1碗</span><span class="ab-val">40g干 / 140kcal</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="category-group">
+                    <div class="cat-header" onclick="toggleCat(this)">🥩 蛋白质 (肉蛋奶) <span style="color:#CCC">▼</span></div>
+                    <div class="cat-body">
+                        <div class="add-btn" onclick="addLog('food', '牛肉1掌', 150)">
+                            <span class="ab-name">牛肉 1掌心</span><span class="ab-val">100g / 150kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('food', '鸡胸1掌', 120)">
+                            <span class="ab-name">鸡胸肉 1掌心</span><span class="ab-val">100g / 120kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('food', '鸡蛋1个', 70)">
+                            <span class="ab-name">鸡蛋 1个</span><span class="ab-val">50g / 70kcal</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="category-group">
+                    <div class="cat-header" onclick="toggleCat(this)">🍎 蔬菜水果 <span style="color:#CCC">▼</span></div>
+                    <div class="cat-body">
+                        <div class="add-btn" onclick="addLog('food', '蔬菜1盘', 50)">
+                            <span class="ab-name">蔬菜 1大盘</span><span class="ab-val">200g / 50kcal</span>
+                        </div>
+                        <div class="add-btn" onclick="addLog('food', '苹果1个', 60)">
+                            <span class="ab-name">苹果 1个</span><span class="ab-val">中等 / 60kcal</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="manualLogList" style="padding-top:15px; border-top:1px solid #f0f0f0; font-size:12px; color:#666;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <div class="tab-item active" onclick="switchTab('home')"><div class="tab-icon">📊</div><div class="tab-txt">进度</div></div>
+        <div class="tab-item" onclick="switchTab('train')"><div class="tab-icon">🏋️‍♂️</div><div class="tab-txt">训练</div></div>
+        <div class="tab-item" onclick="switchTab('diet')"><div class="tab-icon">🥗</div><div class="tab-txt">缺口</div></div>
+    </div>
+
+    <div class="toast-box" id="toast">
+        <span id="toastMsg">记录成功</span>
+        <button class="undo-btn" onclick="undoLast()">撤销</button>
+    </div>
+
+    <div class="modal-overlay" id="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:10px;">记录体重 (kg)</h3>
+            <input type="number" id="wInput" class="inp-big" placeholder="85.0">
+            <div style="display:flex; gap:10px;">
+                <button onclick="closeModal()" style="flex:1; padding:12px; border-radius:12px; border:none; background:#F0F2F5; font-weight:600;">取消</button>
+                <button onclick="saveWeight()" style="flex:1; padding:12px; border-radius:12px; border:none; background:var(--primary); color:white; font-weight:600;">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ 全局配置 ============
+        const CONFIG = { BMR: 1800, MAX_INTAKE: 1900, WATER: 2300, START_W: 85.0, TARGET_W: 75.0 };
+        const THEMES = [
+            { t:"周日恢复", d:"马房护理 + 核心", c:"#2E8B57" },
+            { t:"周一冲刺", d:"有氧耐力 + 低碳", c:"#DC143C" },
+            { t:"周二休息", d:"纯休息 + 全天控碳", c:"#666" },
+            { t:"周三塑形", d:"上肢力量 + 均衡饮食", c:"#0066CC" },
+            { t:"周四促睾", d:"下肢深蹲 + 高蛋白", c:"#6A5ACD" },
+            { t:"周五循环", d:"全身HIIT + 备战", c:"#FF8C00" },
+            { t:"周六工作", d:"高强度教学 + 正常碳", c:"#FF1493" }
+        ];
+        
+        // 详细食谱与计划 (Strict Data)
+        const PLANS = [
+            // Sun
+            { tasks: [{n:"马房护理", c:300}, {n:"核心恢复", c:150}], 
+              menu: { b:{n:"全麦面包(2片)+牛奶(1盒)", c:400}, l:{n:"清蒸鱼(200g)+蔬菜山", c:600}, d:{n:"蔬菜沙拉(大份)", c:300} } },
+            // Mon
+            { tasks: [{n:"哑铃循环x4组", c:300}, {n:"跑步30分钟", c:300}], 
+              menu: { b:{n:"燕麦(50g)+鸡蛋(2个)", c:400}, l:{n:"鸡胸肉(150g)+米饭(1拳)", c:600}, d:{n:"玉米(1根)+黄瓜(1根)", c:300} } },
+            // Tue
+            { tasks: [{n:"全身拉伸", c:50}], 
+              menu: { b:{n:"黑咖啡+水煮蛋(1个)", c:300}, l:{n:"去皮鸡腿(2个)+蔬菜", c:500}, d:{n:"苹果(1个)+无糖酸奶", c:300} } },
+            // Wed
+            { tasks: [{n:"上肢哑铃x4组", c:200}, {n:"平板支撑x3组", c:100}], 
+              menu: { b:{n:"全麦三明治(1个)+豆浆", c:400}, l:{n:"瘦牛肉(150g)+意面(1小碗)", c:600}, d:{n:"蔬菜汤+豆腐", c:300} } },
+            // Thu
+            { tasks: [{n:"深蹲x4组", c:250}, {n:"箭步蹲x4组", c:150}], 
+              menu: { b:{n:"脱脂奶+麦片(50g)", c:400}, l:{n:"煎牛排(150g)+土豆(1个)", c:700}, d:{n:"番茄(1个)+黄瓜(1根)", c:200} } },
+            // Fri
+            { tasks: [{n:"波比跳x20", c:150}, {n:"全身循环x3组", c:300}], 
+              menu: { b:{n:"全麦面包(2片)+煎蛋", c:450}, l:{n:"清炒虾仁(200g)+杂粮饭", c:550}, d:{n:"杂粮粥(1碗)", c:300} } },
+            // Sat
+            { tasks: [{n:"马术教学(高强)", c:500}, {n:"睡前拉伸", c:50}], 
+              menu: { b:{n:"肉包(1个)+豆浆", c:500}, l:{n:"正常便当(去油)", c:700}, d:{n:"水果拼盘", c:300} } }
+        ];
+
+        // ============ 状态管理 ============
+        let db = {};
+        let dateList = [];
+        const todayStr = new Date().toISOString().split('T')[0];
+        let selectedDate = todayStr;
+        let lastAction = null; // {type: 'plan'|'extra'|'menu'|'food', id: string, date: string, val: any}
+
+        // 初始化日期 (前2天 ~ 后5天 = 8天)
+        function init() {
+            setGreeting();
+            const base = new Date();
+            base.setDate(base.getDate() - 2); // Start from 2 days ago
+            
+            for(let i=0; i<8; i++) {
+                const d = new Date(base);
+                d.setDate(base.getDate() + i);
+                const k = d.toISOString().split('T')[0];
+                dateList.push(k);
+                
+                // 模拟数据初始化
+                if(!db[k]) {
+                    db[k] = {
+                        weight: i<2 ? 84.8 - i*0.2 : null,
+                        water: i<2 ? 2000 : 0,
+                        planDone: [], // indices
+                        extraLogs: [], // {id, n, c}
+                        menuDone: {b:false, l:false, d:false},
+                        foodLogs: [] // {id, n, c}
+                    };
+                    // 过去两天模拟完成
+                    if(i<2) {
+                        db[k].planDone = [0,1];
+                        db[k].menuDone = {b:true, l:true, d:true};
+                    }
+                }
+            }
+            renderAll();
+        }
+
+        function setGreeting() {
+            const h = new Date().getHours();
+            let g = "早安";
+            if(h >= 11) g = "午安";
+            if(h >= 18) g = "晚上好";
+            document.getElementById('greetingText').innerText = `${g}，小李教练`;
+        }
+
+        // ============ 计算逻辑 ============
+        function getStats(date) {
+            const dObj = new Date(date);
+            const plan = PLANS[dObj.getDay()];
+            const data = db[date];
+            
+            // 目标 = 计划总和
+            const targetBurn = plan.tasks.reduce((a,b)=>a+b.c, 0);
+            
+            // 实际消耗
+            let actualBurn = 0;
+            data.planDone.forEach(i => { if(plan.tasks[i]) actualBurn += plan.tasks[i].c; });
+            data.extraLogs.forEach(e => actualBurn += e.c);
+            
+            // 实际摄入
+            let actualIntake = 0;
+            if(data.menuDone.b) actualIntake += plan.menu.b.c;
+            if(data.menuDone.l) actualIntake += plan.menu.l.c;
+            if(data.menuDone.d) actualIntake += plan.menu.d.c;
+            data.foodLogs.forEach(f => actualIntake += f.c);
+
+            return { 
+                targetBurn, actualBurn, 
+                totalBurn: CONFIG.BMR + actualBurn,
+                actualIntake,
+                deficit: (CONFIG.BMR + actualBurn) - actualIntake,
+                weight: data.weight, water: data.water 
+            };
+        }
+
+        // ============ 渲染 ============
+        function renderAll() {
+            renderHeader();
+            renderHome();
+            renderTrain();
+            renderDiet();
+            requestAnimationFrame(renderCharts); // 确保DOM更新后绘图
+        }
+
+        function renderHeader() {
+            const t = THEMES[new Date(todayStr).getDay()];
+            document.getElementById('themeTitle').innerText = t.t;
+            document.getElementById('themeDesc').innerText = t.d;
+        }
+
+        function renderHome() {
+            const s = getStats(todayStr);
+            
+            // 体重
+            const w = s.weight || db[dateList[1]].weight || CONFIG.START_W; // Fallback
+            document.getElementById('dispWeight').innerText = w.toFixed(1);
+            document.getElementById('lostVal').innerText = (CONFIG.START_W - w).toFixed(1);
+            const wPct = ((CONFIG.START_W - w) / (CONFIG.START_W - CONFIG.TARGET_W)) * 100;
+            document.getElementById('weightBar').style.width = Math.max(0, Math.min(100, wPct)) + "%";
+
+            // 饮水
+            document.getElementById('waterVal').innerText = s.water;
+            document.getElementById('waterBar').style.width = Math.min(100, (s.water/CONFIG.WATER)*100) + "%";
+
+            // 消耗 (圆环 + 爆表)
+            const burnPct = (s.actualBurn / (s.targetBurn || 1)) * 100;
+            const ringPct = Math.min(100, burnPct); // 视觉上封顶100
+            
+            const bRing = document.getElementById('ringBurn');
+            const bCard = document.getElementById('burnCard');
+            
+            bRing.style.strokeDashoffset = 283 - (ringPct/100)*283;
+            document.getElementById('txtBurnPct').innerText = Math.round(burnPct) + "%";
+            document.getElementById('txtBurnVal').innerText = s.totalBurn;
+            
+            // 爆表逻辑 (>=100%)
+            if(burnPct >= 100) {
+                bCard.classList.add('overload');
+                bRing.style.strokeDashoffset = 0; // 闭合圆
+                document.getElementById('txtBurnPct').innerText = "超神!";
+            } else {
+                bCard.classList.remove('overload');
+            }
+
+            // 摄入
+            const eatPct = Math.min(100, (s.actualIntake / CONFIG.MAX_INTAKE)*100);
+            document.getElementById('ringEat').style.strokeDashoffset = 283 - (eatPct/100)*283;
+            document.getElementById('txtEatPct').innerText = Math.round(eatPct) + "%";
+            document.getElementById('txtEatLeft').innerText = CONFIG.MAX_INTAKE - s.actualIntake;
+        }
+
+        function renderTrain() {
+            renderScroller('trainScroller');
+            const data = db[selectedDate];
+            const plan = PLANS[new Date(selectedDate).getDay()];
+            const s = getStats(selectedDate);
+
+            document.getElementById('trainTitle').innerText = `${selectedDate.slice(5)} 必做`;
+            document.getElementById('trainTarget').innerText = `目标: ${s.targetBurn} kcal`;
+            
+            document.getElementById('trainList').innerHTML = plan.tasks.map((t,i) => `
+                <div class="task-row ${data.planDone.includes(i)?'done':''}" onclick="togglePlan(${i})">
+                    <div class="chk-box">${data.planDone.includes(i)?'✓':''}</div>
+                    <div><div class="t-title">${t.n}</div><div class="t-desc">${t.c} kcal</div></div>
+                </div>
+            `).join('');
+
+            document.getElementById('extraLogList').innerHTML = data.extraLogs.map(e => 
+                `<span>${e.n} +${e.c}</span> `
+            ).join(' | ') || '暂无加练';
+        }
+
+        function renderDiet() {
+            renderScroller('dietScroller');
+            const data = db[selectedDate];
+            const menu = PLANS[new Date(selectedDate).getDay()].menu;
+
+            document.getElementById('menuList').innerHTML = [['b','早餐'],['l','午餐'],['d','晚餐']].map(k => {
+                const item = menu[k[0]];
+                const done = data.menuDone[k[0]];
+                return `
+                <div class="menu-row">
+                    <div>
+                        <div class="m-tag">${k[1]} ${item.c}kcal</div>
+                        <div class="m-name">${item.n}</div>
+                    </div>
+                    <button class="eat-btn ${done?'eaten':''}" onclick="eatMenu('${k[0]}')">${done?'已吃':'🍴 吃过'}</button>
+                </div>`
+            }).join('');
+
+            document.getElementById('manualLogList').innerHTML = data.foodLogs.map(f => 
+                `<span>${f.n} +${f.c}</span> `
+            ).join(' | ') || '暂无补录';
+        }
+
+        function renderScroller(id) {
+            const el = document.getElementById(id);
+            el.innerHTML = dateList.map(d => {
+                const isToday = d === todayStr;
+                const active = d === selectedDate ? 'active' : '';
+                const s = getStats(d);
+                
+                // 状态逻辑
+                let st = '';
+                if(d <= todayStr) st = (s.actualBurn >= s.targetBurn*0.9) ? 'st-done' : 'st-fail';
+                
+                const dayLabel = isToday ? '今天' : ["周日","周一","周二","周三","周四","周五","周六"][new Date(d).getDay()];
+                
+                return `
+                <div class="date-item ${active} ${st} ${isToday?'is-today':''}" onclick="selectDate('${d}')">
+                    <div class="d-week">${dayLabel}</div>
+                    <div class="d-date">${d.slice(5)}</div>
+                </div>`
+            }).join('');
+            
+            // Scroll to Today if needed (first render)
+            if(selectedDate === todayStr && el.scrollLeft === 0) {
+                 // Simple offset calculation could go here
+            }
+        }
+
+        // ============ 图表 (Chart.js V3 High Contrast) ============
+        let charts = {};
+        function renderCharts() {
+            drawC('cWeight', 'weight', 70, 90, '#0066CC');
+            drawC('cBurn', 'burn', 1800, 3500, '#FF8C00');
+            drawC('cIntake', 'intake', 0, 2500, '#2E8B57');
+            drawC('cDeficit', 'deficit', -500, 1500, '#6A5ACD');
+        }
+
+        function drawC(id, type, min, max, color) {
+            const ctx = document.getElementById(id);
+            if(!ctx) return;
+            if(charts[id]) charts[id].destroy();
+
+            const labels = dateList.map(d => d.slice(5));
+            const data = dateList.map(d => {
+                const s = getStats(d);
+                if(type === 'weight') return s.weight;
+                if(type === 'burn') return s.totalBurn;
+                if(type === 'intake') return s.actualIntake;
+                if(type === 'deficit') return s.deficit;
+            });
+
+            // 宽度适配：点少时撑满，点多时滚动
+            ctx.canvas.parentNode.style.width = Math.max(window.innerWidth - 40, dateList.length * 60) + "px";
+
+            charts[id] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color,
+                        borderWidth: 4, // 加粗
+                        pointRadius: 6, // 大点
+                        pointBackgroundColor: '#fff', // 实心白
+                        pointBorderColor: color,
+                        pointBorderWidth: 3,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: false },
+                    layout: { padding: 10 },
+                    scales: {
+                        y: { 
+                            min, max, grid: { color: '#EAEAEA', lineWidth: 1 },
+                            ticks: { color: '#666', font: { weight:'bold', size: 11 } }
+                        },
+                        x: { 
+                            grid: { display:false }, 
+                            ticks: { color: '#333', font: { weight:'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ============ 交互动作 ============
+        function switchTab(t) {
+            document.querySelectorAll('.page').forEach(e => e.classList.remove('active'));
+            document.querySelectorAll('.tab-item').forEach(e => e.classList.remove('active'));
+            document.getElementById(t).classList.add('active');
+            
+            const map = { home:0, train:1, diet:2 };
+            document.querySelectorAll('.tab-item')[map[t]].classList.add('active');
+            
+            renderAll();
+        }
+
+        function selectDate(d) { selectedDate = d; renderAll(); }
+
+        function toggleCat(el) {
+            const body = el.nextElementSibling;
+            body.classList.toggle('show');
+            el.querySelector('span').innerText = body.classList.contains('show') ? '▲' : '▼';
+        }
+
+        // 数据修改与撤销
+        function addLog(type, name, cal) {
+            if(selectedDate !== todayStr) return alert("只能记录今天的数据");
+            const id = Date.now();
+            
+            if(type === 'extra') db[todayStr].extraLogs.push({id, n:name, c:cal});
+            if(type === 'food') db[todayStr].foodLogs.push({id, n:name, c:cal});
+            
+            lastAction = { type, id, date: todayStr, val: {n:name, c:cal} };
+            showToast(`已添加: ${name}`);
+            renderAll();
+        }
+
+        function eatMenu(k) {
+            if(selectedDate !== todayStr) return alert("只能记录今天的数据");
+            db[todayStr].menuDone[k] = true;
+            lastAction = { type: 'menu', id: k, date: todayStr };
+            showToast("打卡成功");
+            renderAll();
+        }
+
+        function togglePlan(i) {
+            if(selectedDate !== todayStr) return alert("只能记录今天的数据");
+            const list = db[todayStr].planDone;
+            const idx = list.indexOf(i);
+            if(idx > -1) {
+                list.splice(idx, 1);
+            } else {
+                list.push(i);
+                showToast("任务完成");
+            }
+            renderAll();
+        }
+
+        function addWater(v) { db[todayStr].water += v; renderAll(); }
+
+        // 撤销逻辑
+        function undoLast() {
+            if(!lastAction || lastAction.date !== todayStr) return showToast("无可撤销项");
+            const { type, id } = lastAction;
+            
+            if(type === 'extra') {
+                const arr = db[todayStr].extraLogs;
+                const idx = arr.findIndex(x => x.id === id);
+                if(idx > -1) arr.splice(idx, 1);
+            }
+            if(type === 'food') {
+                const arr = db[todayStr].foodLogs;
+                const idx = arr.findIndex(x => x.id === id);
+                if(idx > -1) arr.splice(idx, 1);
+            }
+            if(type === 'menu') {
+                db[todayStr].menuDone[id] = false;
+            }
+            
+            lastAction = null;
+            showToast("已撤销");
+            renderAll();
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        // 弹窗
+        function openModal() { document.getElementById('modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+        function saveWeight() {
+            const v = parseFloat(document.getElementById('wInput').value);
+            if(v) { db[todayStr].weight = v; renderAll(); }
+            closeModal();
+        }
+
+        // 启动
+        init();
+    </script>
+</body>
+</html>
