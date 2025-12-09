@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>小李的减重工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            /* 视觉降噪：使用深灰代替纯黑 */
+            --primary: #0055AA;   /* 深蓝 */
+            --success: #228B22;   /* 深绿 */
+            --warning: #D35400;   /* 深橙/红 */
+            --gold: #FFD700;      /* 爆表金 */
+            --dark: #333333;      /* 深灰文本 */
+            --gray: #666666;
+            --bg: #F4F5F7;
+            --card-bg: #FFFFFF;
+            --radius: 16px;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; }
+        body { background-color: var(--bg); color: var(--dark); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* ====== 布局 ====== */
+        .page-container { flex: 1; position: relative; overflow: hidden; }
+        .page { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            padding: calc(var(--safe-top) + 10px) 16px calc(var(--safe-bottom) + 90px) 16px;
+            overflow-y: auto; opacity: 0; visibility: hidden; 
+            -webkit-overflow-scrolling: touch;
+        }
+        .page.active { opacity: 1; visibility: visible; z-index: 10; }
+
+        /* ====== 头部 ====== */
+        .header-section { margin-bottom: 15px; padding-top: 10px; }
+        .app-title { font-size: 28px; font-weight: 800; color: var(--dark); letter-spacing: -0.5px; margin-bottom: 10px; }
+        
+        .status-banner {
+            background: linear-gradient(135deg, #0055AA 0%, #004080 100%);
+            color: white; padding: 15px; border-radius: 16px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 4px 10px rgba(0, 85, 170, 0.2);
+        }
+        .status-info h4 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+        .status-info p { font-size: 12px; opacity: 0.9; }
+        .status-icon { font-size: 24px; }
+
+        /* ====== 卡片 ====== */
+        .card { background: var(--card-bg); border-radius: var(--radius); padding: 18px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .card-title { font-size: 16px; font-weight: 700; color: var(--dark); }
+        .card-subtitle { font-size: 12px; color: var(--gray); background: #F0F0F0; padding: 3px 8px; border-radius: 6px; }
+
+        /* ====== 首页：体重 ====== */
+        .weight-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+        .weight-val { font-size: 42px; font-weight: 800; color: var(--dark); line-height: 1; }
+        .weight-unit { font-size: 14px; color: var(--gray); margin-left: 4px; }
+        /* 简化后的按钮 */
+        .rec-btn { background: var(--dark); color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+        
+        .progress-track { height: 10px; background: #E0E0E0; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #228B22, #32CD32); width: 0%; border-radius: 5px; transition: width 0.5s; }
+        .range-txt { display: flex; justify-content: space-between; font-size: 11px; color: var(--gray); margin-top: 5px; }
+
+        /* ====== 首页：圆环 ====== */
+        .rings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
+        .ring-card { 
+            display: flex; flex-direction: column; align-items: center; padding: 15px 10px; text-align: center; position: relative;
+            transition: all 0.3s; border: 1px solid transparent;
+        }
+        /* 爆表特效 */
+        .ring-card.explode { border-color: var(--gold); background: #FFFDF0; box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
+        
+        .ring-box { position: relative; width: 100px; height: 100px; margin-bottom: 8px; }
+        .ring-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
+        .ring-txt { font-size: 20px; font-weight: 800; color: var(--dark); }
+        .explode .ring-txt { color: #B8860B; font-size: 24px; } /* 爆字变大 */
+        .ring-sub { font-size: 10px; color: var(--gray); margin-top: 2px; }
+
+        svg.ring { transform: rotate(-90deg); width: 100%; height: 100%; }
+        circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+        .c-bg { stroke: #EEE; }
+        .c-val { stroke-dasharray: 251; stroke-dashoffset: 251; transition: stroke-dashoffset 0.8s; }
+
+        .data-main { font-size: 16px; font-weight: 700; color: var(--dark); }
+        .data-desc { font-size: 11px; color: var(--gray); }
+
+        /* ====== 图表 (高对比度) ====== */
+        .chart-wrap { width: 100%; overflow-x: auto; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
+        .chart-inner { height: 200px; min-width: 600px; position: relative; } /* 强制滚动 */
+
+        /* ====== 日期选择器 (8天) ====== */
+        .date-scroller { display: flex; gap: 8px; overflow-x: auto; padding: 0 4px 15px 4px; margin-bottom: 5px; }
+        .date-card { 
+            flex: 0 0 65px; background: #fff; border-radius: 12px; padding: 10px 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: 2px solid transparent; transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        }
+        /* 选中态：深色边框 */
+        .date-card.active { border-color: var(--dark); transform: translateY(-2px); }
+        /* 今天：放大 */
+        .date-card.is-today { flex: 0 0 75px; background: #F0F7FF; border-color: var(--primary); }
+        
+        .d-week { font-size: 13px; font-weight: 700; margin-bottom: 2px; color: var(--dark); }
+        .d-date { font-size: 10px; color: var(--gray); }
+        .is-today .d-week { color: var(--primary); font-size: 15px; }
+
+        /* ====== 列表与打卡 (复选框) ====== */
+        .check-list { display: flex; flex-direction: column; }
+        .check-item { 
+            display: flex; align-items: center; padding: 14px 0; border-bottom: 1px solid #F0F0F0; 
+            cursor: pointer; position: relative;
+        }
+        .check-item:last-child { border-bottom: none; }
+        
+        .checkbox { 
+            width: 24px; height: 24px; border-radius: 6px; border: 2px solid #999; margin-right: 12px; 
+            display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
+        }
+        .check-item.checked .checkbox { background: var(--success); border-color: var(--success); }
+        .check-item.checked .item-content { opacity: 0.5; text-decoration: line-through; }
+        
+        .item-content h4 { font-size: 15px; font-weight: 600; color: var(--dark); }
+        .item-content p { font-size: 12px; color: var(--gray); margin-top: 2px; }
+        
+        /* 列表项内的删除按钮 */
+        .del-btn-inline {
+            margin-left: auto; padding: 4px 10px; font-size: 12px; color: #999; border: 1px solid #eee; border-radius: 4px; background: #fff;
+        }
+
+        /* ====== 加练/加餐 (手风琴) ====== */
+        .acc-header { 
+            display: flex; justify-content: space-between; align-items: center; padding: 12px; 
+            background: #F8F9FA; border-radius: 10px; margin-bottom: 8px; font-weight: 600; cursor: pointer;
+        }
+        .acc-body { display: none; padding: 10px 0; gap: 8px; display: none; } /* JS Toggle grid */
+        .acc-body.show { display: grid; grid-template-columns: 1fr 1fr; }
+        
+        .add-btn { 
+            background: #fff; border: 1px solid #E0E0E0; padding: 10px; border-radius: 10px; text-align: left;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .add-btn b { font-size: 13px; color: var(--dark); }
+        .add-btn span { font-size: 11px; color: var(--gray); }
+
+        /* ====== 底部导航 ====== */
+        .tab-bar { 
+            position: fixed; bottom: 0; left: 0; width: 100%; height: calc(55px + var(--safe-bottom)); 
+            background: rgba(255,255,255,0.95); border-top: 1px solid #eee; 
+            display: flex; padding-bottom: var(--safe-bottom); z-index: 100;
+        }
+        .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bbb; }
+        .tab-item.active { color: var(--primary); }
+        .tab-icon { font-size: 24px; margin-bottom: 2px; }
+        .tab-txt { font-size: 10px; font-weight: 600; }
+
+        /* ====== 弹窗 ====== */
+        .modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; display: none; justify-content: center; align-items: center; }
+        .modal-body { background: white; width: 80%; padding: 20px; border-radius: 16px; }
+        .inp { width: 100%; padding: 12px; font-size: 20px; text-align: center; border: 1px solid #ddd; border-radius: 8px; margin: 15px 0; }
+
+    </style>
+</head>
+<body>
+
+    <div class="page-container">
+        
+        <div id="home" class="page active">
+            <div class="header-section">
+                <div class="app-title">小李的减重工具</div>
+                <div class="status-banner">
+                    <div class="status-info">
+                        <h4 id="themeTitle">冲刺阶段</h4>
+                        <p id="themeDesc">今日：有氧耐力 + 低碳高蛋白</p>
+                    </div>
+                    <div class="status-icon">🔥</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">📉 体重</span><span class="card-subtitle">目标 75.0kg</span></div>
+                <div class="weight-row">
+                    <div><span class="weight-val" id="dispWeight">--</span><span class="weight-unit">kg</span></div>
+                    <button class="rec-btn" onclick="openModal('weight')">记录体重</button>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="weightBar"></div></div>
+                <div class="range-txt"><span>85kg</span><span>75kg</span></div>
+
+                <div style="margin-top:15px; padding-top:15px; border-top:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
+                    <div><span style="font-weight:700;">💧 饮水</span> <span style="font-size:12px; color:var(--gray);"><span id="waterVal" style="color:var(--primary);font-weight:700;">0</span> / 2300ml</span></div>
+                    <div style="display:flex; gap:5px;">
+                        <button class="rec-btn" style="padding:4px 10px; font-size:12px; background:#e0e0e0; color:#333;" onclick="addWater(100)">+100</button>
+                        <button class="rec-btn" style="padding:4px 10px; font-size:12px; background:#e0e0e0; color:#333;" onclick="addWater(500)">+500</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rings-grid">
+                <div class="card ring-card" id="burnCard">
+                    <div class="ring-box">
+                        <svg class="ring" viewBox="0 0 100 100">
+                            <circle class="c-bg" cx="50" cy="50" r="45"></circle>
+                            <circle class="c-val" id="ringBurn" cx="50" cy="50" r="45" stroke="#D35400"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <span class="ring-txt" id="txtBurnPct">0%</span>
+                            <span class="ring-sub">完成度</span>
+                        </div>
+                    </div>
+                    <div class="data-main" id="txtBurnVal">0</div>
+                    <div class="data-desc">今日消耗 (基础+运动)</div>
+                </div>
+                <div class="card ring-card">
+                    <div class="ring-box">
+                        <svg class="ring" viewBox="0 0 100 100">
+                            <circle class="c-bg" cx="50" cy="50" r="45"></circle>
+                            <circle class="c-val" id="ringEat" cx="50" cy="50" r="45" stroke="#228B22"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <span class="ring-txt" id="txtEatPct">0%</span>
+                            <span class="ring-sub">已摄入</span>
+                        </div>
+                    </div>
+                    <div class="data-main" id="txtEatLeft" style="color:#228B22">1900</div>
+                    <div class="data-desc">剩余额度 (kcal)</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">⚖️ 体重趋势</span><span class="card-subtitle">70-90kg</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cWeight"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">📉 热量缺口</span><span class="card-subtitle">目标 > 500</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cDeficit"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">🔥 消耗趋势</span><span class="card-subtitle">基准: 1800</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cBurn"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">🍽️ 摄入趋势</span><span class="card-subtitle">限额: 1900</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cIntake"></canvas></div></div>
+            </div>
+        </div>
+
+        <div id="train" class="page">
+            <div class="header-section"><div class="app-title">训练计划 🏋️‍♂️</div></div>
+            
+            <div class="date-scroller" id="trainScroller"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title" id="trainTitle">必做项目</span>
+                    <span class="card-subtitle" id="trainTarget">目标: 0</span>
+                </div>
+                <div class="check-list" id="trainList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">➕ 加练 (补录)</span></div>
+                
+                <div class="category-group">
+                    <div class="acc-header" onclick="toggleAcc(this)">🏃‍♂️ 有氧训练 <span>▼</span></div>
+                    <div class="acc-body">
+                        <div class="add-btn" onclick="addLog('extra', '跑步10min', 80)"><b>跑步 10m</b><span>80 kcal</span></div>
+                        <div class="add-btn" onclick="addLog('extra', '跑步30min', 250)"><b>跑步 30m</b><span>250 kcal</span></div>
+                    </div>
+                </div>
+                <div class="category-group">
+                    <div class="acc-header" onclick="toggleAcc(this)">💪 无氧 / 马房 <span>▼</span></div>
+                    <div class="acc-body">
+                        <div class="add-btn" onclick="addLog('extra', '哑铃1组', 100)"><b>哑铃 1组</b><span>100 kcal</span></div>
+                        <div class="add-btn" onclick="addLog('extra', '马房1h', 200)"><b>马房 1h</b><span>200 kcal</span></div>
+                    </div>
+                </div>
+                <div id="extraList" class="check-list" style="margin-top:10px; border-top:1px solid #f0f0f0;"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">🔥 消耗趋势</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cBurnT"></canvas></div></div>
+            </div>
+        </div>
+
+        <div id="diet" class="page">
+            <div class="header-section"><div class="app-title">饮食缺口 🥗</div></div>
+
+            <div class="date-scroller" id="dietScroller"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">推荐食谱</span>
+                    <span class="card-subtitle">打卡</span>
+                </div>
+                <div class="check-list" id="menuList"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">➕ 加餐 (补录)</span></div>
+                
+                <div class="category-group">
+                    <div class="acc-header" onclick="toggleAcc(this)">🍚 主食 (碳水) <span>▼</span></div>
+                    <div class="acc-body">
+                        <div class="add-btn" onclick="addLog('food', '米饭1拳', 150)"><b>米饭 1拳</b><span>150 kcal</span></div>
+                        <div class="add-btn" onclick="addLog('food', '玉米1根', 120)"><b>玉米 1根</b><span>120 kcal</span></div>
+                    </div>
+                </div>
+                <div class="category-group">
+                    <div class="acc-header" onclick="toggleAcc(this)">🥩 蛋白质 <span>▼</span></div>
+                    <div class="acc-body">
+                        <div class="add-btn" onclick="addLog('food', '牛肉1掌', 150)"><b>牛肉 1掌</b><span>150 kcal</span></div>
+                        <div class="add-btn" onclick="addLog('food', '鸡蛋1个', 70)"><b>鸡蛋 1个</b><span>70 kcal</span></div>
+                    </div>
+                </div>
+                 <div class="category-group">
+                    <div class="acc-header" onclick="toggleAcc(this)">🍎 蔬果 <span>▼</span></div>
+                    <div class="acc-body">
+                        <div class="add-btn" onclick="addLog('food', '蔬菜1盘', 50)"><b>蔬菜 1盘</b><span>50 kcal</span></div>
+                        <div class="add-btn" onclick="addLog('food', '苹果1个', 60)"><b>苹果 1个</b><span>60 kcal</span></div>
+                    </div>
+                </div>
+                <div id="foodList" class="check-list" style="margin-top:10px; border-top:1px solid #f0f0f0;"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">🍽️ 摄入趋势</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cIntakeD"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="card-title">📉 缺口趋势</span></div>
+                <div class="chart-wrap"><div class="chart-inner"><canvas id="cDeficitD"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <div class="tab-item active" onclick="switchTab('home')"><div class="tab-icon">📊</div><div class="tab-txt">进度</div></div>
+        <div class="tab-item" onclick="switchTab('train')"><div class="tab-icon">🏋️‍♂️</div><div class="tab-txt">训练</div></div>
+        <div class="tab-item" onclick="switchTab('diet')"><div class="tab-icon">🥗</div><div class="tab-txt">缺口</div></div>
+    </div>
+
+    <div class="modal-mask" id="modal">
+        <div class="modal-body">
+            <h3>记录体重 (kg)</h3>
+            <input type="number" id="wInput" class="inp" placeholder="85.0">
+            <div style="display:flex; gap:10px;">
+                <button onclick="closeModal()" style="flex:1; padding:12px; background:#f0f0f0; border:none; border-radius:8px;">取消</button>
+                <button onclick="saveWeight()" style="flex:1; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px;">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ 配置 ============
+        const CONFIG = { BMR: 1800, MAX_INTAKE: 1900, WATER: 2300, START_W: 85.0, TARGET_W: 75.0 };
+        const THEMES = [
+            { t:"周日恢复", d:"马房护理 + 核心", c:"#2E8B57" },
+            { t:"周一冲刺", d:"有氧耐力 + 低碳", c:"#DC143C" },
+            { t:"周二休息", d:"纯休息 + 全天控碳", c:"#666" },
+            { t:"周三塑形", d:"上肢力量 + 均衡饮食", c:"#0066CC" },
+            { t:"周四促睾", d:"下肢深蹲 + 高蛋白", c:"#6A5ACD" },
+            { t:"周五循环", d:"全身HIIT + 备战", c:"#FF8C00" },
+            { t:"周六工作", d:"高强度教学 + 正常碳", c:"#FF1493" }
+        ];
+
+        // 详细数据结构
+        const PLANS = [
+            { tasks: [{n:"马房护理", c:300}, {n:"核心恢复", c:150}], 
+              menu: { b:{n:"全麦面包(2片)+牛奶", c:400}, l:{n:"鱼肉(200g)+蔬菜", c:600}, d:{n:"沙拉(大份)", c:300} } },
+            { tasks: [{n:"哑铃循环x4组", c:300}, {n:"跑步30分钟", c:300}], 
+              menu: { b:{n:"燕麦(50g)+鸡蛋(2)", c:400}, l:{n:"鸡胸(150g)+米饭", c:600}, d:{n:"玉米+黄瓜", c:300} } },
+            { tasks: [{n:"全身拉伸", c:50}], 
+              menu: { b:{n:"黑咖+水煮蛋", c:300}, l:{n:"鸡腿(去皮)+菜", c:500}, d:{n:"苹果+酸奶", c:300} } },
+            { tasks: [{n:"上肢哑铃x4", c:200}, {n:"平板支撑x3", c:100}], 
+              menu: { b:{n:"全麦三明治+豆浆", c:400}, l:{n:"牛肉(150g)+意面", c:600}, d:{n:"蔬菜汤", c:300} } },
+            { tasks: [{n:"深蹲x4组", c:250}, {n:"箭步蹲x4", c:150}], 
+              menu: { b:{n:"牛奶+麦片", c:400}, l:{n:"牛排(150g)+土豆", c:700}, d:{n:"番茄+黄瓜", c:200} } },
+            { tasks: [{n:"波比跳x20", c:150}, {n:"全身循环", c:300}], 
+              menu: { b:{n:"全麦面包+煎蛋", c:450}, l:{n:"虾仁(200g)+杂粮", c:550}, d:{n:"杂粮粥", c:300} } },
+            { tasks: [{n:"马术教学", c:500}, {n:"睡前拉伸", c:50}], 
+              menu: { b:{n:"肉包+豆浆", c:500}, l:{n:"便当(去油)", c:700}, d:{n:"水果拼盘", c:300} } }
+        ];
+
+        let db = {};
+        let dateList = [];
+        const todayStr = new Date().toISOString().split('T')[0];
+        let selectedDate = todayStr;
+
+        // 初始化日期：前2天 + 今天 + 后5天 = 8天
+        function init() {
+            const base = new Date();
+            base.setDate(base.getDate() - 2);
+            for(let i=0; i<8; i++) {
+                const d = new Date(base);
+                d.setDate(base.getDate() + i);
+                const k = d.toISOString().split('T')[0];
+                dateList.push(k);
+                if(!db[k]) {
+                    db[k] = {
+                        weight: i<2 ? 85.0 - i*0.2 : null,
+                        water: i<2 ? 2000 : 0,
+                        planDone: i<2 ? [0,1] : [],
+                        extra: i<2 ? [{id:1, n:"加练", c:100}] : [],
+                        menuDone: i<2 ? {b:true, l:true, d:true} : {b:false, l:false, d:false},
+                        food: []
+                    };
+                }
+            }
+            renderAll();
+        }
+
+        function getStats(date) {
+            const dObj = new Date(date);
+            const plan = PLANS[dObj.getDay()];
+            const data = db[date];
+            
+            const targetBurn = plan.tasks.reduce((a,b)=>a+b.c, 0);
+            let actualBurn = 0;
+            data.planDone.forEach(i => { if(plan.tasks[i]) actualBurn += plan.tasks[i].c; });
+            data.extra.forEach(e => actualBurn += e.c);
+
+            let actualIntake = 0;
+            if(data.menuDone.b) actualIntake += plan.menu.b.c;
+            if(data.menuDone.l) actualIntake += plan.menu.l.c;
+            if(data.menuDone.d) actualIntake += plan.menu.d.c;
+            data.food.forEach(f => actualIntake += f.c);
+
+            return { 
+                targetBurn, actualBurn, 
+                totalBurn: CONFIG.BMR + actualBurn,
+                actualIntake,
+                deficit: (CONFIG.BMR + actualBurn) - actualIntake,
+                weight: data.weight, water: data.water 
+            };
+        }
+
+        // ============ 渲染 ============
+        function renderAll() {
+            renderHeader();
+            renderHome();
+            renderTrain();
+            renderDiet();
+            renderCharts();
+        }
+
+        function renderHeader() {
+            const t = THEMES[new Date(todayStr).getDay()];
+            document.getElementById('themeTitle').innerText = t.t;
+            document.getElementById('themeDesc').innerText = t.d;
+        }
+
+        function renderHome() {
+            const s = getStats(todayStr);
+            const w = s.weight || CONFIG.START_W;
+            document.getElementById('dispWeight').innerText = w.toFixed(1);
+            document.getElementById('weightBar').style.width = Math.min(100, ((CONFIG.START_W - w)/(CONFIG.START_W - CONFIG.TARGET_W))*100) + "%";
+            document.getElementById('waterVal').innerText = s.water;
+
+            // 消耗 (爆表逻辑)
+            const burnPct = (s.actualBurn / (s.targetBurn||1)) * 100;
+            const ringPct = Math.min(100, burnPct);
+            document.getElementById('ringBurn').style.strokeDashoffset = 251 - (ringPct/100)*251;
+            document.getElementById('txtBurnVal').innerText = s.totalBurn;
+            
+            const bCard = document.getElementById('burnCard');
+            const bTxt = document.getElementById('txtBurnPct');
+            if(burnPct >= 150) {
+                bCard.classList.add('explode');
+                bTxt.innerText = "爆";
+            } else {
+                bCard.classList.remove('explode');
+                bTxt.innerText = Math.round(burnPct) + "%";
+            }
+
+            // 摄入
+            const eatPct = Math.min(100, (s.actualIntake/CONFIG.MAX_INTAKE)*100);
+            document.getElementById('ringEat').style.strokeDashoffset = 251 - (eatPct/100)*251;
+            document.getElementById('txtEatPct').innerText = Math.round(eatPct) + "%";
+            document.getElementById('txtEatLeft').innerText = CONFIG.MAX_INTAKE - s.actualIntake;
+        }
+
+        function renderTrain() {
+            renderScroller('trainScroller');
+            const data = db[selectedDate];
+            const plan = PLANS[new Date(selectedDate).getDay()];
+            const s = getStats(selectedDate);
+
+            document.getElementById('trainTitle').innerText = `${selectedDate.slice(5)} 必做`;
+            document.getElementById('trainTarget').innerText = `目标: ${s.targetBurn}`;
+            
+            document.getElementById('trainList').innerHTML = plan.tasks.map((t, i) => {
+                const checked = data.planDone.includes(i);
+                return `
+                <div class="check-item ${checked?'checked':''}" onclick="togglePlan(${i})">
+                    <div class="checkbox">${checked?'✓':''}</div>
+                    <div class="item-content"><h4>${t.n}</h4><p>${t.c} kcal</p></div>
+                </div>`;
+            }).join('');
+
+            document.getElementById('extraList').innerHTML = data.extra.map((e, idx) => `
+                <div class="check-item checked">
+                    <div class="checkbox">✓</div>
+                    <div class="item-content"><h4>${e.n}</h4><p>+${e.c} kcal</p></div>
+                    <button class="del-btn-inline" onclick="delLog('extra', ${idx})">撤销</button>
+                </div>
+            `).join('');
+        }
+
+        function renderDiet() {
+            renderScroller('dietScroller');
+            const data = db[selectedDate];
+            const menu = PLANS[new Date(selectedDate).getDay()].menu;
+
+            document.getElementById('menuList').innerHTML = [['b','早餐'],['l','午餐'],['d','晚餐']].map(k => {
+                const item = menu[k[0]];
+                const checked = data.menuDone[k[0]];
+                return `
+                <div class="check-item ${checked?'checked':''}" onclick="toggleMenu('${k[0]}')">
+                    <div class="checkbox">${checked?'✓':''}</div>
+                    <div class="item-content"><h4>${k[1]}: ${item.n}</h4><p>${item.c} kcal</p></div>
+                </div>`
+            }).join('');
+
+            document.getElementById('foodList').innerHTML = data.food.map((f, idx) => `
+                <div class="check-item checked">
+                    <div class="checkbox">✓</div>
+                    <div class="item-content"><h4>${f.n}</h4><p>+${f.c} kcal</p></div>
+                    <button class="del-btn-inline" onclick="delLog('food', ${idx})">撤销</button>
+                </div>
+            `).join('');
+        }
+
+        function renderScroller(id) {
+            const el = document.getElementById(id);
+            el.innerHTML = dateList.map(d => {
+                const isToday = d === todayStr;
+                const active = d === selectedDate ? 'active' : '';
+                const dayLabel = isToday ? '今天' : ["周日","周一","周二","周三","周四","周五","周六"][new Date(d).getDay()];
+                return `
+                <div class="date-card ${active} ${isToday?'is-today':''}" onclick="selectDate('${d}')">
+                    <div class="d-week">${dayLabel}</div>
+                    <div class="d-date">${d.slice(5)}</div>
+                </div>`
+            }).join('');
+        }
+
+        // ============ 图表 (高对比度) ============
+        let charts = {};
+        function renderCharts() {
+            const common = { weight: 4, radius: 5, color: '#fff' };
+            // 首页
+            draw('cWeight', 'weight', 70, 90, '#0055AA');
+            draw('cBurn', 'burn', 1800, 3500, '#D35400');
+            draw('cIntake', 'intake', 0, 2500, '#228B22');
+            draw('cDeficit', 'deficit', -500, 1500, '#800080');
+            // 分页
+            if(document.getElementById('train').classList.contains('active')) draw('cBurnT', 'burn', 1800, 3500, '#D35400');
+            if(document.getElementById('diet').classList.contains('active')) {
+                draw('cIntakeD', 'intake', 0, 2500, '#228B22');
+                draw('cDeficitD', 'deficit', -500, 1500, '#800080');
+            }
+        }
+
+        function draw(id, type, min, max, color) {
+            const ctx = document.getElementById(id);
+            if(!ctx) return;
+            if(charts[id]) charts[id].destroy();
+
+            const labels = dateList.map(d => d.slice(5));
+            const data = dateList.map(d => {
+                const s = getStats(d);
+                if(type === 'weight') return s.weight;
+                if(type === 'burn') return s.totalBurn;
+                if(type === 'intake') return s.actualIntake;
+                if(type === 'deficit') return s.deficit;
+            });
+            
+            // 宽度适配
+            ctx.canvas.parentNode.style.width = Math.max(window.innerWidth-40, dateList.length * 60) + 'px';
+
+            charts[id] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color,
+                        borderWidth: 3,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: color,
+                        pointBorderWidth: 3,
+                        pointRadius: 5,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: false },
+                    layout: { padding: 10 },
+                    scales: {
+                        y: { min, max, grid: { color: '#E0E0E0' }, ticks: { color: '#333', font: { weight:'bold' } } },
+                        x: { grid: { display: false }, ticks: { color: '#333', font: { weight:'bold' } } }
+                    }
+                }
+            });
+        }
+
+        // ============ 交互 ============
+        function switchTab(t) {
+            document.querySelectorAll('.page').forEach(e => e.classList.remove('active'));
+            document.querySelectorAll('.tab-item').forEach(e => e.classList.remove('active'));
+            document.getElementById(t).classList.add('active');
+            
+            const map = { home:0, train:1, diet:2 };
+            document.querySelectorAll('.tab-item')[map[t]].classList.add('active');
+            renderAll();
+        }
+
+        function selectDate(d) { selectedDate = d; renderAll(); }
+        function toggleAcc(el) { el.nextElementSibling.style.display = el.nextElementSibling.style.display==='grid'?'none':'grid'; }
+        
+        // 打卡逻辑
+        function togglePlan(i) {
+            if(selectedDate !== todayStr) return alert("仅限今日");
+            const arr = db[todayStr].planDone;
+            const idx = arr.indexOf(i);
+            idx > -1 ? arr.splice(idx, 1) : arr.push(i);
+            renderAll();
+        }
+        function toggleMenu(k) {
+            if(selectedDate !== todayStr) return alert("仅限今日");
+            db[todayStr].menuDone[k] = !db[todayStr].menuDone[k];
+            renderAll();
+        }
+        function addLog(type, n, c) {
+            if(selectedDate !== todayStr) return alert("仅限今日");
+            const arr = type==='extra' ? db[todayStr].extra : db[todayStr].food;
+            arr.push({id: Date.now(), n, c});
+            renderAll();
+        }
+        function delLog(type, idx) {
+            if(selectedDate !== todayStr) return alert("仅限今日");
+            const arr = type==='extra' ? db[todayStr].extra : db[todayStr].food;
+            arr.splice(idx, 1);
+            renderAll();
+        }
+
+        function addWater(v) { db[todayStr].water += v; renderAll(); }
+        
+        function openModal() { document.getElementById('modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+        function saveWeight() {
+            const v = parseFloat(document.getElementById('wInput').value);
+            if(v) { db[todayStr].weight = v; renderAll(); }
+            closeModal();
+        }
+
+        init();
+    </script>
+</body>
+</html>
